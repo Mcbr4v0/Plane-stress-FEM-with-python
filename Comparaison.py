@@ -10,6 +10,7 @@ import time
 E = 200e9
 nu = 0.3
 N = 10
+t = 0.1
 ec = []
 x = []
 time_np_solve = []
@@ -19,8 +20,7 @@ time_compute_K = []
 def moy(U,Uprime):#function to compute the error between the two methods
     moy = 0
     for i in range(len(U)):
-        if U[i] != 0:
-            moy += abs((U[i]-Uprime[i])/U[i])
+            moy += abs((U[i]-Uprime[i]))
     return moy/len(U)
 
 
@@ -32,7 +32,7 @@ for N in range(1, 51):
 
     F = np.zeros(2 * len(nodes), dtype=float)
     F = Polygones.forces(N, F, [1e10, 0], 'right',10/N)  # apply the force on the right side 1e10 in the x direction
-    K = Polygones.global_stiffness_matrix(nodes, elements, E, nu)  # compute the global stiffness matrix
+    K = Polygones.global_stiffness_matrix(nodes, elements, E, nu,t)  # compute the global stiffness matrix
     K, F = Polygones.apply_boundary_conditions(K, F, boundary_conditions)  # apply the boundary conditions
     end_time = time.time()
     time_compute_K.append(end_time -start_time)  # measure the time to compute the global stiffness

@@ -11,7 +11,8 @@ elements = {
     }
 E = 200e9
 nu = 0.3
-K = Polygones.global_stiffness_matrix(nodes,elements,E,nu)
+t = 0.1
+K = Polygones.global_stiffness_matrix(nodes,elements,E,nu,t)
 boundary_conditions = [(0, [0,0]), (5, [0,0])]
 F = np.zeros(2 * len(nodes), dtype=float)  # Ensure F is of type float
 F[8] = 1e10  # Apply force at node 4 in x-direction
@@ -28,4 +29,6 @@ K_banded = Polygones.convert_to_banded(K, lower_bandwidth, upper_bandwidth)
 # Solve the system using scipy.linalg.solve_banded
 U = scipy.linalg.solve_banded((lower_bandwidth, upper_bandwidth), K_banded, F)
 deformed_nodes = Polygones.displacement(nodes ,U)
+N = Polygones.shapeFunction(nodes,elements,1)
+print(N(1,0))
 Polygones.showDeform2D(elements,nodes,deformed_nodes)

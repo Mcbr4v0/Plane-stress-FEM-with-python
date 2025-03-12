@@ -31,6 +31,8 @@ import numpy as np
 
 def showDeform2D(element,nodes,deformed_nodes):
     x,y,xdef,ydef = [],[],[],[]
+    if len(nodes) != len(deformed_nodes):
+        raise ValueError("nodesLenghtsIssues")
     for i in element:
         for j in element[i]:#loop to get the coordinates of the nodes of the element
             x.append(nodes[j][0])
@@ -50,6 +52,22 @@ def showDeform2D(element,nodes,deformed_nodes):
     plt.ylabel("y")
     plt.grid()
     plt.legend()
+    plt.show()
+
+def showMesh2D(element,nodes):
+    x,y = [],[]
+    for i in element:
+        for j in element[i]:
+            x.append(nodes[j][0])
+            y.append(nodes[j][1])
+        x.append(nodes[element[i][0]][0]);x.append(nodes[element[i][2]][0])#close the triangle
+        y.append(nodes[element[i][0]][1]);y.append(nodes[element[i][2]][1])
+    plt.plot(x, y,marker='x', linestyle='dotted',color='blue')
+    plt.axis('equal')
+    plt.title("Mesh of a plate")
+    plt.xlabel("x")
+    plt.ylabel("y")
+    plt.grid()
     plt.show()
 
 def displacement(nodes,U):  
@@ -87,19 +105,40 @@ def hermite_interpolation(x,y,yprime):#hermite interpolation
         return result
     return P
 
-def shapeFunction(nodes, element,nbElement):
+def numercialIntegration(f:callable, a, b, n):#numerical integration
+    if f is None or not callable(f):
+        raise ValueError("f must be a callable function")
+    h = (b - a) / n
+    result = 0
+    for i in range(n):
+        result += f(a + i * h) * h
+    return result
+
+def shapeFunctionCoeff(nodes, element,nbElement):
     points = element[nbElement]
     L=[]
+    delta = (nodes[points[0]][0]*(nodes[points[1]][1]-nodes[points[2]][1])
+                +nodes[points[1]][0]*(nodes[points[2]][1]-nodes[points[0]][1])
+                +nodes[points[2]][0]*(nodes[points[0]][1]-nodes[points[1]][1]))
     for i in range(len(points)):# calulation of each coefficient of the shape function
         a = nodes[points[(i+1)%3]][0]*nodes[points[(i+2)%3]][1]-nodes[points[(i+2)%3]][1]*nodes[points[(i+1)%3]][0]
         b = nodes[points[(i+1)%3]][1]-nodes[points[(i+2)%3]][1]
         c = nodes[points[(i+2)%3]][0]-nodes[points[(i+1)%3]][0]
-        L.append([a,b,c])
+        L.append([a/delta,b/delta,c/delta])
     return L
+
+def shapeFunction(nodes,element,nbElement):#shape function
+    L = shapeFunctionCoeff(nodes,element,nbElement)
+    def N(x,y):
+        N = []
+        for i in range(len(L)):
+            N.append(L[i][0]+L[i][1]*x+L[i][2]*y)
+        return N
+    return N
 
 def strainDisplacement(nodes,elements,nbElement): #calcul of the B matrix, since the shape function is linear, the B matrix is constant
     points = elements[nbElement]
-    L = shapeFunction(nodes,elements,nbElement)
+    L = shapeFunctionCoeff(nodes,elements,nbElement)
     B = np.zeros((3,6))
     for i in range(len(points)):
         B[0,2*i] = L[i][1]
@@ -116,7 +155,7 @@ def local_stiffness_matrix(nodes,element,nbElement,E,nu,t):
                 +nodes[points[1]][0]*(nodes[points[2]][1]-nodes[points[0]][1])
                 +nodes[points[2]][0]*(nodes[points[0]][1]-nodes[points[1]][1]))*t#calcul of the triangle volume
     B = strainDisplacement(nodes,element,nbElement)
-    D = np.array([[1,nu,0],[nu,1,0],[0,0,(1-nu)/2]])*E/(1-nu**2)# to remove from the function because it depends on the shape of the element
+    D = np.array([[1,nu,0],[nu,1,0],[0,0,(1-nu)/2]])*E/(1-nu**2)# to remove from the function because it depends on the type of material
     Ke = np.dot(B.T,np.dot(D,B))*Volume #since the B matrix is constant, the integral of B^TDB is equal to B^TDB*Volume
     return Ke
 
@@ -147,19 +186,22 @@ def apply_boundary_conditions(K, F, bc):
         F[idx + 1] = displacement[1]
     return K, F
 
-def mesh(L,l,N):
+def mesh(L,l,N,M=0,offsetX=0,offsetY=0):
+    if(M==0):
+        M=N
     n = N+1
-    nodes = np.zeros((n**2,2))
+    m= M+1
+    nodes = np.zeros((n*m,2))
     elements = {}
     for i in range(n):
-        for j in range(n):
-            nodes[i*n+j] = [i*l/(n-1),j*L/(n-1)]
+        for j in range(m):
+            nodes[i*m+j] = [i*l/(n-1)-offsetX,j*L/(m-1)-offsetY]
     index = 0
     for i in range(n-1):
-        for j in range(n-1):
-            elements[index] = [j+i*n,j+i*n+n,j+i*n+1]
+        for j in range(m-1):
+            elements[index] = [j + i * m, j + i * m + m, j + i * m + 1]
             index += 1
-            elements[index] = [j+i*n+n+1,j+i*n+1,j+i*n+n]  
+            elements[index] = [j+i*m+m+1,j+i*m+1,j+i*m+m]  
             index+=1        
     return nodes,elements
 
@@ -184,20 +226,23 @@ def calculate_bandwith(K):
                     upper_bandwidth = max(upper_bandwidth, j - i)
     return lower_bandwidth, upper_bandwidth
 
-def boundry(N,direct,disp):
+def boundry(direct,disp,N,M=0):
+    if M == 0:
+        M=N
     n = N+1
+    m= M+1
     boundry = []
     if direct == 'top':
         for i in range(n):
-            boundry.append((i*n+n,disp))
+            boundry.append((i*m+m,disp))
     elif direct == 'bottom':
         for i in range(n):
-            boundry.append((i*n,disp))
+            boundry.append((i*m,disp))
     elif direct == 'left':
-        for i in range(n):
+        for i in range(m):
             boundry.append((i,disp))
     elif direct == 'right':
-        for i in range(n):
+        for i in range(m):
             boundry.append((i+n*(n-1),disp))
     return boundry
 
@@ -210,23 +255,27 @@ def merge_boudary_conditions(bc1, bc2):
             bc.append(i)
     return bc
 
-def forces(N,F,force,dir,l):
-    n = N+1
+def edgeForces(F, force, dir, l,N,M=0):# function to apply the forces along the edges of the plate
+    if M == 0:
+        M = N
+    n = N + 1
+    m = M + 1
     if dir == 'top':
         for i in range(n):
-            F[2*(i*n+n-1)] += force[0]*l/(n**2)
-            F[2*(i*n+n-1)+1] += force[1]*l/(n**2)
+            F[2 * (i * m + m - 1)] += force[0] * l / n
+            F[2 * (i * m + m - 1) + 1] += force[1] * l / n
+    elif dir == 'bottom':
         for i in range(n):
-            F[2*(i*n)] += force[0]*l/(n**2)
-            F[2*(i*n)+1] += force[1]*l/(n**2)
+            F[2 * (i * m)] += force[0] * l / n
+            F[2 * (i * m) + 1] += force[1] * l / n
     elif dir == 'left':
-        for i in range(n):
-            F[2*i] += force[0]*l/(n**2)
-            F[2*i+1] += force[1]*l/(n**2)
+        for i in range(m):
+            F[2 * i] += force[0] * l / m
+            F[2 * i + 1] += force[1] * l / m
     elif dir == 'right':
-        for i in range(n):
-            F[2*(i+n*(n-1))] += force[0]*l/(n**2)
-            F[2*(i+n*(n-1))+1] += force[1]*l/(n**2)
+        for i in range(m):
+            F[2 * (i + n * (n - 1))] += force[0] * l / m
+            F[2 * (i + n * (n - 1)) + 1] += force[1] * l / m
     return F
 
 def test_bandiwth(K):
@@ -239,6 +288,6 @@ def test_bandiwth(K):
         for i in range(n-bandiwth):
             if K[i,i+bandiwth] != 0:
                 nb = 1
-    
+                break
     return bandiwth,bandiwth
             
