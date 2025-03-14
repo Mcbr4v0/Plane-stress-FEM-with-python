@@ -213,7 +213,16 @@ def convert_to_banded(K, lower_bandwidth, upper_bandwidth):
             ab[upper_bandwidth + i - j, j] = K[i, j]
     return ab
 
-def calculate_bandwith(K):
+def convert_to_banded_optimized(K,lower_bandwidth, upper_bandwidth):
+    n = K.shape[0]
+    ab = np.zeros((lower_bandwidth + upper_bandwidth + 1, n))
+    for i in range(n):
+        start = max(0, i - lower_bandwidth)
+        end = min(n, i + upper_bandwidth + 1)
+        ab[upper_bandwidth + i - np.arange(start, end), np.arange(start, end)] = K[i, start:end]
+    return ab
+
+def calculate_bandwidth(K):
     n = K.shape[0]
     lower_bandwidth = 0
     upper_bandwidth = 0
@@ -278,7 +287,7 @@ def edgeForces(F, force, dir, l,N,M=0):# function to apply the forces along the 
             F[2 * (i + n * (n - 1)) + 1] += force[1] * l / m
     return F
 
-def test_bandiwth(K):
+def calculate_bandwidth_optimized(K):
     n = K.shape[0]
     bandiwth = n
     nb = 0

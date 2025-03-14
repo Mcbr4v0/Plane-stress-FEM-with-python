@@ -25,7 +25,7 @@ def moy(U,Uprime):#function to compute the error between the two methods
 
 
 
-for N in range(1, 51):
+for N in range(1, 61):
     start_time = time.time()
     nodes, elements = Polygones.mesh(10, 10, N)  # create the mesh
     boundary_conditions = Polygones.boundry('left', [0, 0],N)  # create the boundary conditions, the left side is fixed
@@ -46,7 +46,7 @@ for N in range(1, 51):
 
     # Measure time for scipy.linalg.solve_banded
     start_time = time.time()
-    lower_bandwidth, upper_bandwidth = Polygones.calculate_bandwith(K)  # calculate the bandwidth
+    lower_bandwidth, upper_bandwidth = Polygones.calculate_bandwidth_optimized(K)  # calculate the bandwidth
     K_banded = Polygones.convert_to_banded_optimized(K, lower_bandwidth, upper_bandwidth)
     U = scipy.linalg.solve_banded((lower_bandwidth, upper_bandwidth), K_banded, F)
     end_time = time.time()
@@ -59,11 +59,11 @@ for N in range(1, 51):
 
 # Create a figure and axis for error plot
 fig, ax = plt.subplots()
-ax.plot(x, ec, label='Erreur de relative')
+ax.plot(x, ec, label='Relative Error')
 ax.legend()
-ax.set_title('Erreur relative entre la méthode absolue et la méthode de Gauss')
-ax.set_xlabel("Nombre d'élément par coté")
-ax.set_ylabel('Erreur en %')
+ax.set_title('Relative Error between Absolute Method and Gauss Method')
+ax.set_xlabel("Number of elements per side")
+ax.set_ylabel('Error in %')
 
 # Save the error plot figure
 fig.savefig("convergence.png")
@@ -78,10 +78,11 @@ ax.plot(x, time_scipy_solve_banded, label='scipy.linalg.solve_banded')
 ax.plot(x, time_compute_K, label='compute K')
 ax.legend()
 ax.set_title('Comparison of computation time')
-ax.set_xlabel("Nombre d'élément par coté")
+ax.set_xlabel("Number of elements per side")
 ax.set_ylabel('Time (seconds)')
 
-#Save the time comparison plot figure
+# Save the time comparison plot figure
 fig.savefig("time_comparison.png")
 
 # Show the time comparison plot
+plt.show()
