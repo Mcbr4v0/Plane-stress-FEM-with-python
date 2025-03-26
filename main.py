@@ -1,41 +1,121 @@
 import Polygones
 import matplotlib.pyplot as plt
 import numpy as np
-import scipy.linalg
+import scipy.linalg as sp
 import pandas as pd
-E = 200e9
+from scipy.sparse.linalg import eigsh
+
+E = 210e9
 nu = 0.3
-N = 5
-t = 0.01
-l = 10
-nodes,elements = Polygones.mesh(l,l,N)
-Polygones.showMesh2D(elements,nodes)
-bc1 = Polygones.boundry('left',[0,0],N)
-bc2 = Polygones.boundry('right',[-1,0],N)
-boundary_conditions = bc1
-boundary_conditions = Polygones.merge_boudary_conditions(bc1,bc2)
+N = 6
+t = 0.1
+L = 10
+l = 4
+g = 4
+pho = 7850
+nodes,elements = Polygones.mesh(l,l,N,M=g,offsetX=0,offsetY=0)
+#Polygones.showMesh2D(elements,nodes)
 
-F = np.zeros(2 * len(nodes), dtype=float) 
+K = Polygones.global_stiffness_matrix(nodes, elements, E, nu,t)
+M = Polygones.global_mass_matrix(nodes, elements,pho,t)
+F = np.zeros(2 * len(nodes), dtype=float)
+F = Polygones.edgeForces(F, [20e6, 0], 'right',l,N,M=g)
+boundary_conditions = Polygones.boundry('left', [0, 0],N,M = g)
+K_reduced, F_reduced,constrained_dofs = Polygones.apply_boundary_conditions(K, F, boundary_conditions)
+U = sp.solve(K_reduced, F_reduced)
+U_full = Polygones.reconstruct_full_vector(U, constrained_dofs, 2 * len(nodes))
+deformed_nodes = Polygones.displacement(nodes, U_full,scale =1)
+#Polygones.showDeform2D(elements,nodes,deformed_nodes)
+
+# Save the stiffness matrix (K) to a CSV file
+K_df = pd.DataFrame(K)  # Convert the matrix to a DataFrame
+K_df.to_csv("stiffness_matrix.csv", index=False, header=False)  # Save to CSV without row/column headers
+
+# Save the mass matrix (M) to a CSV file
+M_df = pd.DataFrame(M)  # Convert the matrix to a DataFrame
+M_df.to_csv("mass_matrix.csv", index=False, header=False)  # Save to CSV without row/column headers
+
+# Save the displacement vector (U) to a CSV file
+U_df = pd.DataFrame(U_full)  # Convert the matrix to a DataFrame
+U_df.to_csv("displacement_vector.csv", index=False, header=False)  # Save to CSV without row/column headers
+
+M_reduced = Polygones.reduce_mass_matrix(M, constrained_dofs)
+
+eigenvalues_reduced, eigenvectors_reduced = sp.eigh(K_reduced, M_reduced)
+
+# Compute natural frequencies (ω) from eigenvalues (ω²)
+frequencies = np.sqrt(eigenvalues_reduced)/2/np.pi
+eigenvectors = Polygones.reconstruct_full_vectors(eigenvectors_reduced, constrained_dofs, 2 * len(nodes))
+
+# Create a header for the CSV file
+num_modes = eigenvectors_reduced.shape[1]
+header = ["Eigenvalue"] + [f"DOF {i+1} " for i in range(num_modes)]
+
+# Combine eigenvalues and eigenvectors into a single matrix
+eigen_data = np.hstack((frequencies.reshape(-1, 1), eigenvectors_reduced))
+
+# Save the combined data to a CSV file with a descriptive header
+eigen_data_df = pd.DataFrame(eigen_data, columns=header)  # Add the header to the DataFrame
+eigen_data_df.to_csv("eigenvalues_eigenvectors.csv", index=False)  # Save to CSV
+# Combine eigenvalues and eigenvectors into a single matrix
+
+# Save the combined data to a CSV file with a descriptive header
+#eigenvectorsdf = pd.DataFrame(eigenvectors)  # Add the header to the DataFrame
+#eigenvectorsdf.to_csv("eigenvectors.csv", index=False)  # Save to CSV
 
 
-#F= Polygones.edgeForces(F,[1e7,0],'right',l,N)
-K = Polygones.global_stiffness_matrix(nodes,elements,E,nu,t)
-K,F = Polygones.apply_boundary_conditions(K,F,boundary_conditions)
-lower_bandwidth,upper_bandwidth  = Polygones.calculate_bandwidth_optimized(K)
-K_banded = Polygones.convert_to_banded(K, lower_bandwidth, upper_bandwidth)
-Uprime = np.linalg.solve(K, F)
 
-U = scipy.linalg.solve_banded((lower_bandwidth, upper_bandwidth), K_banded, F)
-'''df = pd.DataFrame(K_banded)
-df.to_csv('K_banded.csv',index=False)
-df = pd.DataFrame(K)
-df.to_csv('K.csv',index=False)'
+#Polygones.animate_plate_oscillation(nodes,elements,eigenvectors,frequencies,mode = 0,timeScale=1)
+
+print("Condition number of K:", np.linalg.cond(K))
+print("Condition number of M:", np.linalg.cond(M))
+print("Constrained DOFs:", constrained_dofs)
+print(frequencies)
+# Print the results
+plt.close()
+plt.plot(frequencies, 'o')
+plt.xlabel('Mode Number')
+plt.ylabel('Natural Frequency (f Hz)')
+plt.title('Natural Frequencies of the System')
+plt.grid()
+#plt.show()
 '''
+K_normalised,maxKvalue = Polygones.normalize_matrix(K)
+M_normalised,maxMvalue = Polygones.normalize_matrix(M)
+eigenvalues, eigenvectors = sp.eigh(K_normalised, M_normalised)
 
-print(upper_bandwidth)
-deformed_nodes = Polygones.displacement(nodes ,Uprime)  
-Polygones.showDeform2D(elements,nodes,deformed_nodes)
+frequencies = np.sqrt(eigenvalues*maxKvalue)/2/np.pi
+#print(frequencies)
 
-deformed_nodes = Polygones.displacement(nodes ,U)  
+'''
+alpha = 1e5
+A = K + alpha * M
+eigenvalues, eigenvectors = sp.eigh(A, M)
+omega_squared = eigenvalues - alpha
+frequenciescomputed = np.sqrt(np.maximum(omega_squared, 0))/2/np.pi
+print(frequenciescomputed)
+
+#compare the two methods
 
 
+
+# Save the combined data to a CSV file with a descriptive header
+#eigenvectorsdf = pd.DataFrame(eigenvectors)  # Add the header to the DataFrame
+#eigenvectorsdf.to_csv("eigenvectorsfull.csv", index=False)  # Save to CSV
+
+num_modes = 10  # Number of modes to compute
+eigenvalues, eigenvectors = eigsh(K, M=M, k=num_modes, which='SM')
+
+# Compute natural frequencies
+frequencies = np.sqrt(np.maximum(eigenvalues, 0)) / (2 * np.pi)
+print("First natural frequencies (Hz):", frequencies)
+
+plt.close()
+plt.plot(frequenciescomputed, 'o')
+plt.xlabel('Mode Number')
+plt.ylabel('Natural Frequency (f Hz)')
+plt.title('Natural Frequencies of the System')
+plt.grid()
+plt.show()
+
+#Polygones.animate_plate_oscillation(nodes,elements,eigenvectors,frequencies,mode = 3,timeScale=10)
