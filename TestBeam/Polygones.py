@@ -5,13 +5,21 @@ The program is divided into two parts:
 2- the second part is the implementation of the finite element method to solve the problem of a plate under load
 This part is all function used later in the second part
 showDeform2D: function to show the deformation of the plate
+showMesh2D: function to show the mesh of the plate
+animate_plate_oscillation: function to animate the oscillation of the plate
 displacement: function to calculate the deformed nodes
 L: function to calculate the Lagrange polynomial
 Hermit_interpolation: function to calculate the hermite interpolation
 shapeFunction: function to calculate the shape function
 strainDisplacement: function to calculate the B matrix
+local_mass_matrix: function to calculate the local mass matrix
+global_mass_matrix: function to calculate the global mass matrix
 local_stiffness_matrix: function to calculate the local stiffness matrix
 global_stiffness_matrix: function to calculate the global stiffness matrix
+numercialIntegration: function to calculate the numerical integration
+doubleNumericalIntegration: function to calculate the double numerical integration
+doubleNumericalIntergradion: function to calculate the double numerical integration but with the barycentric coordinates
+edgeForces: function to apply the forces along the edges of the plate
 apply_boundary_conditions: function to apply the boundary conditions
 mesh: function to create the mesh
 convert_to_banded: function to convert the global stiffness matrix to banded format
@@ -22,7 +30,7 @@ forces: function to apply the forces
 
 
 Writen by: Arthur Boudehent
-Last modification: 2025-04-03
+Last modification: 2025-01-04
 """
 
 #imports
@@ -85,7 +93,7 @@ def animate_plate_oscillation(nodes, elements, eigenvectors, frequencies, mode=0
     """
     # Extract the mode shape and frequency
     mode_shape = eigenvectors[mode]
-    omega = frequencies[mode]  # Natural frequency (rad/s)
+    omega = frequencies[mode]  # Natural frequency (z)
 
     # Check if the frequency is valid
     if omega <= 0:
@@ -112,7 +120,7 @@ def animate_plate_oscillation(nodes, elements, eigenvectors, frequencies, mode=0
     # Create the figure and axis
     fig, ax = plt.subplots()
     ax.set_aspect('equal')
-    ax.set_title(f"Plate Oscillation - Mode {mode + 1} with a frequency of {omega/2/np.pi:.2f} Hz and a scale factor of {scaleTot}")
+    ax.set_title(f"Plate Oscillation - Mode {mode + 1} with a frequency of {omega:.2f} Hz and a scale factor of {scaleTot}")
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     ax.grid()
@@ -275,21 +283,21 @@ def doubleNumericalIntergradion(f:callable,n,m,c,d,a=1,b=1,g_lower:callable = la
             result += f(x, y) * hx * hy
     return result
 
-def shapeFunctionCoeff(nodes, element,nbElement):
-    points = element[nbElement]
+def shapeFunctionCoeff(nodes, elements,nbElement):
+    numpoints = elements[nbElement]
     L=[]
-    delta = (nodes[points[0]][0]*(nodes[points[1]][1]-nodes[points[2]][1])
-                +nodes[points[1]][0]*(nodes[points[2]][1]-nodes[points[0]][1])
-                +nodes[points[2]][0]*(nodes[points[0]][1]-nodes[points[1]][1]))
-    for i in range(len(points)):# calulation of each coefficient of the shape function
-        a = nodes[points[(i+1)%3]][0]*nodes[points[(i+2)%3]][1]-nodes[points[(i+2)%3]][1]*nodes[points[(i+1)%3]][0]
-        b = nodes[points[(i+1)%3]][1]-nodes[points[(i+2)%3]][1]
-        c = nodes[points[(i+2)%3]][0]-nodes[points[(i+1)%3]][0]
+    delta = (nodes[numpoints[0]][0]*(nodes[numpoints[1]][1]-nodes[numpoints[2]][1])
+                +nodes[numpoints[1]][0]*(nodes[numpoints[2]][1]-nodes[numpoints[0]][1])
+                +nodes[numpoints[2]][0]*(nodes[numpoints[0]][1]-nodes[numpoints[1]][1]))
+    for i in range(len(numpoints)):# calulation of each coefficient of the shape function
+        a = nodes[numpoints[(i+1)%3]][0]*nodes[numpoints[(i+2)%3]][1]-nodes[numpoints[(i+2)%3]][0]*nodes[numpoints[(i+1)%3]][1]
+        b = nodes[numpoints[(i+1)%3]][1]-nodes[numpoints[(i+2)%3]][1]
+        c = nodes[numpoints[(i+2)%3]][0]-nodes[numpoints[(i+1)%3]][0]
         L.append([a/delta,b/delta,c/delta])
     return L
 
-def shapeFunction(nodes,element,nbElement):#shape function
-    L = shapeFunctionCoeff(nodes,element,nbElement)
+def shapeFunction(nodes,elements,nbElement):#shape function
+    L = shapeFunctionCoeff(nodes,elements,nbElement)
     def N(x,y):
         N = []
         for i in range(len(L)):
@@ -307,7 +315,7 @@ def strainDisplacement(nodes,elements,nbElement): #calcul of the B matrix, since
         B[1,2*i] = 0
         B[1,2*i+1] = L[i][2]
         B[2,2*i] = L[i][2]
-        B[2,2*i+1] = L[i][1]   
+        B[2,2*i+1] = L[i][1]  
     return B
 
 def local_stiffness_matrix(nodes,element,nbElement,E,nu,t):
@@ -322,7 +330,7 @@ def local_stiffness_matrix(nodes,element,nbElement,E,nu,t):
 
 def global_stiffness_matrix(nodes,element,E,nu,t):
     n = len(nodes)
-    K = np.zeros((2*n,2*n))
+    K = np.zeros((2*n,2*n),dtype = float)
     for i in element:
         Ke = local_stiffness_matrix(nodes,element,i,E,nu,t)
         for j in range(3):
@@ -365,14 +373,18 @@ def reconstruct_full_vector(reduced_vector, constrained_dofs, total_dofs):
     return full_vector
 
 def reconstruct_full_vectors(reduced_vectors, constrained_dofs, total_dofs):
-    # Initialize the full vectors matrix
-    n_vectors = reduced_vectors.shape[1]
-    full_vectors = np.zeros((n_vectors, total_dofs))
-
-    # Reconstruct each vector using the reconstruct_full_vector function
-    for i in range(n_vectors):
-        full_vectors[i, :] = reconstruct_full_vector(reduced_vectors[i, :], constrained_dofs, total_dofs)
-
+    """
+    Reconstruct the full eigenvectors, preserving the mode shapes.
+    """
+    num_modes = reduced_vectors.shape[1]
+    full_vectors = np.zeros((num_modes, total_dofs))  # Note the shape change
+    free_dofs = [i for i in range(total_dofs) if i not in constrained_dofs]
+    
+    for i in range(num_modes):
+        mode = np.zeros(total_dofs)
+        mode[free_dofs] = reduced_vectors[:, i]
+        full_vectors[i] = mode
+        
     return full_vectors
 
 def reconstruct_full_matrix(reduced_matrix, constrained_dofs, total_dofs):
@@ -405,7 +417,7 @@ def mesh(L,l,N,M=0,offsetX=0,offsetY=0):
     elements = {}
     for i in range(n):
         for j in range(m):
-            nodes[i*m+j] = [i*l/(n-1)-offsetX,j*L/(m-1)-offsetY]
+            nodes[i*m+j] = [i*L/(n-1)-offsetX,j*l/(m-1)-offsetY]
     index = 0
     for i in range(n-1):
         for j in range(m-1):
@@ -450,9 +462,10 @@ def apply_boundary_conditions(K, F, bc):
     # Flatten the list of constrained degrees of freedom (DOFs)
     constrained_dofs = []
     for node, displacement in bc:
-        constrained_dofs.append(2 * node)       # x DOF
-        constrained_dofs.append(2 * node + 1)  # y DOF
-    # Create a mask for the DOFs to keep
+        if displacement[0] is not None:# Skip the node if the displacement is negative      
+            constrained_dofs.append(2 * node)       # x DOF
+        if displacement[1] is not None:# Skip the node if the displacement is negative
+            constrained_dofs.append(2 * node + 1)  # y DOF
     # Create a mask for the DOFs to keep
     total_dofs = K.shape[0]
     free_dofs = [i for i in range(total_dofs) if i not in constrained_dofs]
@@ -511,7 +524,7 @@ def edgeForces(F, force, dir, l,N,M=0):# function to apply the forces along the 
             F[2 * i + 1] += force[1] * l / m
     elif dir == 'right':
         for i in range(m):
-            node_index = n * (i + 1) - 1  # Global node index for the 'right' edge
+            node_index = i + n * (m - 1)  # Global node index for the 'right' edge
             F[2 * node_index] += force[0] * l / m
             F[2 * node_index + 1] += force[1] * l / m
     return F
