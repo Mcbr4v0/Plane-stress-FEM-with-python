@@ -408,24 +408,55 @@ def reconstruct_full_matrix(reduced_matrix, constrained_dofs, total_dofs):
 
     return full_matrix
 
-def mesh(L,l,N,M=0,offsetX=0,offsetY=0):
+def mesh(L,l,N,M=0,offsetX=0,offsetY=0,element_type='triangular',mesh_type = 'coarse'):
+
     if(M==0):
         M=N
-    n = N+1
-    m= M+1
+    if(mesh_type == 'coarse'):
+        n = N+1
+        m= M+1
+    if(mesh_type == 'fine'):
+        n = N*2+1
+        m= M*2+1
+    
     nodes = np.zeros((n*m,2))
     elements = {}
     for i in range(n):
         for j in range(m):
             nodes[i*m+j] = [i*L/(n-1)-offsetX,j*l/(m-1)-offsetY]
-    index = 0
-    for i in range(n-1):
-        for j in range(m-1):
-            elements[index] = [j + i * m, j + i * m + m, j + i * m + 1]
-            index += 1
-            elements[index] = [j+i*m+m+1,j+i*m+1,j+i*m+m]  
-            index+=1        
+    if(element_type == 'triangular'):
+        if(mesh_type=='coarse'):
+            index = 0
+            for i in range(N):
+                for j in range(M):
+                    elements[index] = [j + i * m, j + i * m + m, j + i * m + 1]
+                    index += 1
+                    elements[index] = [j+i*m+m+1,j+i*m+1,j+i*m+m]  
+                    index+=1
+        if(mesh_type=='fine'):
+            index = 0
+            for i in range(N):
+                for j in range(M):
+                    elements[index] = [2*j + 2*i * m, 2*j + 2*i * m + m, j + i * m + 2*m, 2*j + 2*i * m + m + 1,2*j+2*i*m+2,2*j+2*i*m+1]
+                    index += 1
+                    elements[index] = [2*j + (2*i+2)* m + 2, 2*j + (2*i+1)* m + 2, 2*j + (2*i) * m + 2, 2*j + (2*i+1)*m +1,2*j+(2*i+2)*m,2*j+(2*i+2)*m+1]  
+                    index+=1     
+    if(element_type=='quadrilateral'):
+        if(mesh_type=='coarse'):
+            index = 0
+            for i in range(N):
+                for j in range(M):
+                    elements[index] = [j + i * m, j + i * m + m, j + i * m + m+1,j + i * m +m]
+                    index += 1
+        if(mesh_type=='fine'):
+            index = 0
+            for i in range(N):
+                for j in range(M):
+                    elements[index] = [2*j + 2*i * m,2*j + (2*i+1) * m,(2*i+2) * m,(2*i+2) * m+1,(2*i+2) * m+2,(2*i+1) * m+2,2*j + (2*i) * m + 2,(2*i) * m + 1,2*j + (2*i+1) * m + 1]
+                    index += 1   
     return nodes,elements
+
+
 
 def convert_to_banded(K, lower_bandwidth, upper_bandwidth):
     n = K.shape[0]

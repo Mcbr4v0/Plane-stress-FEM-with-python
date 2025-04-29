@@ -1,125 +1,73 @@
 import Polygones
 import matplotlib.pyplot as plt
 import numpy as np
-import scipy.linalg as sp
+import scipy.linalg as scp
 import pandas as pd
 from scipy.sparse.linalg import eigsh
+import sympy as sp
+import time
+import os
+if not os.path.exists('animations'):
+    os.makedirs('animations')
+
+
 
 E = 210e9
 nu = 0.3
-N = 10
-t = 0.01
-L = 2
-l = 4
+N = 20
+G = 4
+t = 0.1
+L = 10
+l = 2
 pho = 7850
-nodes,elements = Polygones.mesh(L,L,N)
+elt = 'quad' 
+met = 'fine'
 
-#Polygones.showMesh2D(elements,nodes)
+I = l*t**3/12   #moment of inertia 
+A = l*t         #area of the cross section
 
+mode = []
+def modes(n:int): #Numerically verified for n=1,2,3,4,5
+    return(n*np.pi/L)**2*(E*l**2/12/pho)**0.5/2/np.pi
 
-print(Polygones.shapeFunctionCoeff(nodes,elements,0))
-K = Polygones.global_stiffness_matrix(nodes, elements, E, nu,t)
-M = Polygones.global_mass_matrix(nodes, elements,pho,t)
-F = np.zeros(2 * len(nodes), dtype=float)
-F = Polygones.edgeForces(F, [20e6, 0], 'right',L,N)
-boundary_conditions = Polygones.boundry('left', [0, 0],N)
-K_reduced, F_reduced,constrained_dofs = Polygones.apply_boundary_conditions(K, F, boundary_conditions)
-U = sp.solve(K_reduced, F_reduced)
-U_full = Polygones.reconstruct_full_vector(U, constrained_dofs, 2 * len(nodes))
-deformed_nodes = Polygones.displacement(nodes, U_full,scale =1)
-Polygones.showDeform2D(elements,nodes,deformed_nodes)
+for i in range(1,8):
+    mode.append(modes(i))
+    print(f"Mode number {i}",modes(i))
 
-# Save the stiffness matrix (K) to a CSV file
-K_df = pd.DataFrame(K)  # Convert the matrix to a DataFrame
-K_df.to_csv("stiffness_matrix.csv", index=False, header=False)  # Save to CSV without row/column headers
+nodes,elements = Polygones.mesh(L,l,N,G,element_type=elt,mesh_type=met,offsetY = l/2)
 
-# Save the mass matrix (M) to a CSV file
-M_df = pd.DataFrame(M)  # Convert the matrix to a DataFrame
-M_df.to_csv("mass_matrix.csv", index=False, header=False)  # Save to CSV without row/column headers
+Polygones.showMesh2D(nodes,elements,element_type=elt,mesh_type=met,show=False)
 
-# Save the displacement vector (U) to a CSV file
-U_df = pd.DataFrame(U_full)  # Convert the matrix to a DataFrame
-U_df.to_csv("displacement_vector.csv", index=False, header=False)  # Save to CSV without row/column headers
-
-M_reduced = Polygones.reduce_mass_matrix(M, constrained_dofs)
-
-eigenvalues_reduced, eigenvectors_reduced = sp.eigh(K_reduced, M_reduced)
-
-# Compute natural frequencies (ω) from eigenvalues (ω²)
-frequencies = np.sqrt(eigenvalues_reduced)/2/np.pi
-eigenvectors = Polygones.reconstruct_full_vectors(eigenvectors_reduced, constrained_dofs, 2 * len(nodes))
-'''
-# Create a header for the CSV file
-num_modes = eigenvectors_reduced.shape[1]
-header = ["Eigenvalue"] + [f"DOF {i+1} " for i in range(num_modes)]
-
-# Combine eigenvalues and eigenvectors into a single matrix
-eigen_data = np.hstack((frequencies.reshape(-1, 1), eigenvectors_reduced))
-
-# Save the combined data to a CSV file with a descriptive header
-eigen_data_df = pd.DataFrame(eigen_data, columns=header)  # Add the header to the DataFrame
-eigen_data_df.to_csv("eigenvalues_eigenvectors.csv", index=False)  # Save to CSV
-# Combine eigenvalues and eigenvectors into a single matrix
-
-# Save the combined data to a CSV file with a descriptive header
-#eigenvectorsdf = pd.DataFrame(eigenvectors)  # Add the header to the DataFrame
-#eigenvectorsdf.to_csv("eigenvectors.csv", index=False)  # Save to CSV
+K = pd.read_csv('stiffness_matrix.txt', sep='\t', header=None).to_numpy()
+M = pd.read_csv('mass_matrix.txt', sep='\t', header=None).to_numpy()
+F = np.zeros(2*len(nodes),dtype=float)
 
 
+boudary_conditions = [(4, [0, 0]), (355, [None, 0]),(184,[0,None]),(175,[0,None])]
+K_reduced,F_reduced,constrained_dofs = Polygones.apply_boundary_conditions(K,F,boudary_conditions)
+M_reduced = Polygones.reduce_mass_matrix(M,constrained_dofs)
 
-Polygones.animate_plate_oscillation(nodes,elements,eigenvectors,frequencies,mode = 0,timeScale=1)
+k_max = np.max(np.abs(np.diag(K_reduced)))
+m_max = np.max(np.abs(np.diag(M_reduced)))
+scaling_factor = k_max / m_max
 
-print("Condition number of K:", np.linalg.cond(K))
-print("Condition number of M:", np.linalg.cond(M))
-print("Constrained DOFs:", constrained_dofs)
-print(frequencies)
-# Print the results
-plt.close()
-plt.plot(frequencies, 'o')
-plt.xlabel('Mode Number')
-plt.ylabel('Natural Frequency (f Hz)')
-plt.title('Natural Frequencies of the System')
-plt.grid()
-plt.show()
-'''
-K_normalised,maxKvalue = Polygones.normalize_matrix(K)
-M_normalised,maxMvalue = Polygones.normalize_matrix(M)
-eigenvalues, eigenvectors = sp.eigh(K_normalised, M_normalised)
+K_reduced = K_reduced / k_max
+M_reduced = M_reduced / m_max
 
-frequencies = np.sqrt(eigenvalues*maxKvalue)/2/np.pi
-#print(frequencies)
+eigenvalues = np.linalg.eigvalsh(K_reduced)
+is_positive_definite = np.all(eigenvalues > 0)
+print("Is global stiffness matrix positive definite?", is_positive_definite)
 
+cond_K = np.linalg.cond(K_reduced)
+cond_M = np.linalg.cond(M_reduced)
+print("Condition number of K_reduced:", cond_K)
+print("Condition number of M_reduced:", cond_M)
 
-alpha = 1e5
-A = K + alpha * M
-eigenvalues, eigenvectors = sp.eigh(A, M)
-omega_squared = eigenvalues - alpha
-frequenciescomputed = np.sqrt(np.maximum(omega_squared, 0))/2/np.pi
-print(frequenciescomputed)
+eigenvalues_dense, eigenvectors_dense = scp.eigh(K_reduced, M_reduced)
+eigenvalues_dense = np.maximum(eigenvalues_dense, 0)  # Ensure non-negative eigenvalues
+frequencies_dense = np.sqrt(eigenvalues_dense * scaling_factor) / (2 * np.pi)
+eigenvectors_reconstructed = Polygones.reconstruct_full_vectors(eigenvectors_dense, constrained_dofs, 2 * len(nodes))
 
-#compare the two methods
-
-Polygones.animate_plate_oscillation(nodes,elements,eigenvectors,frequencies,mode = 0,timeScale=10)
-
-# Save the combined data to a CSV file with a descriptive header
-#eigenvectorsdf = pd.DataFrame(eigenvectors)  # Add the header to the DataFrame
-#eigenvectorsdf.to_csv("eigenvectorsfull.csv", index=False)  # Save to CSV
-
-num_modes = 10  # Number of modes to compute
-eigenvalues, eigenvectors = eigsh(K, M=M, k=num_modes, which='SA')
-
-# Compute natural frequencies
-frequencies = np.sqrt(np.maximum(eigenvalues, 0)) / (2 * np.pi)
-print("First natural frequencies (Hz):", frequencies)
-
-plt.close()
-plt.plot(frequenciescomputed, 'o')
-plt.xlabel('Mode Number')
-plt.ylabel('Natural Frequency (f Hz)')
-plt.title('Natural Frequencies of the System')
-plt.grid()
-plt.show()
-
-
-
+for i in range(20):
+    Polygones.animate_plate_oscillation(nodes,elements,eigenvectors_reconstructed,frequencies_dense,mode = i,element_type=elt,mesh_type=met,save_animation=True,filename=f"animations/mode_{i+1}.gif")
 
