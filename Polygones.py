@@ -176,6 +176,124 @@ def showDeform2D(nodes,deformed_nodes,element,element_type = 'tri',mesh_type = '
     if show:
         plt.show()
 
+def showDeformedFrames2D(nodes, deformed_nodes_list, element, element_type='tri', mesh_type='coarse'):
+    """
+    Show deformed mesh with interactive frame selection and expanded view.
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.widgets import Slider
+    
+    # Create figure with maximized size
+    plt.rcParams['figure.figsize'] = [20, 16]
+    fig = plt.figure()
+    
+    # Create main plot area
+    ax = plt.axes([0.05, 0.12, 0.92, 0.85])
+    
+    # Get and plot mesh data
+    x, y, intx, inty = listPlots(nodes, element, element_type, mesh_type)
+    original_plot, = ax.plot(x, y, marker='x', linestyle='dotted', 
+                           color='blue', label='original', linewidth=1.5)
+    if intx:
+        interior_plot = ax.plot(intx, inty, 'x', linestyle='', color='blue')
+    
+    # Plot initial deformed mesh
+    xdef, ydef, intX, intY = listPlots(deformed_nodes_list[0], element, 
+                                      element_type, mesh_type)
+    deformed_plot, = ax.plot(xdef, ydef, marker='x', linestyle='dotted',
+                           color='red', label='deformed', linewidth=1.5)
+    if intX:
+        deformed_interior_plot, = ax.plot(intX, intY, 'x', linestyle='', 
+                                        color='red')
+    
+    # Calculate axis limits to show 1.5 times the object size
+    x_min = min(min(x), min(xdef)) if xdef else min(x)
+    x_max = max(max(x), max(xdef)) if xdef else max(x)
+    y_min = min(min(y), min(ydef)) if ydef else min(y)
+    y_max = max(max(y), max(ydef)) if ydef else max(y)
+    
+    # Calculate centers and ranges
+    x_center = (x_min + x_max) / 2
+    y_center = (y_min + y_max) / 2
+    x_range = (x_max - x_min)  
+    y_range = (y_max - y_min)  
+    
+    # Set equal range if needed to maintain aspect ratio
+    max_range = max(x_range, y_range)
+    ax.set_xlim([x_center - max_range/2, x_center + max_range/2])
+    ax.set_ylim([y_center - max_range/2, y_center + max_range/2])
+    
+    # Configure plot
+    ax.set_aspect('equal')
+    ax.set_title("Deformation of plate under load", fontsize=16, pad=10)
+    ax.set_xlabel("x", fontsize=14, labelpad=5)
+    ax.set_ylabel("y", fontsize=14, labelpad=5)
+    ax.grid(True)
+    ax.legend(fontsize=12, loc='upper right', 
+             bbox_to_anchor=(1.0, 1.0), borderaxespad=0)
+    
+    # Create slider
+    ax_slider = plt.axes([0.2, 0.02, 0.6, 0.03])
+    slider = Slider(
+        ax_slider, 'Frame', 
+        0, len(deformed_nodes_list)-1,
+        valinit=0, 
+        valstep=1,
+        color='lightblue'
+    )
+    
+    # Add frame counter
+    frame_text = ax.text(
+        0.02, 0.98, 
+        'Frame: 0', 
+        transform=ax.transAxes,
+        fontsize=12,
+        bbox=dict(facecolor='white', alpha=0.7, pad=2)
+    )
+    
+    def update(val):
+        frame = int(slider.val)
+        xdef, ydef, intX, intY = listPlots(deformed_nodes_list[frame], 
+                                          element, element_type, mesh_type)
+        deformed_plot.set_data(xdef, ydef)
+        if intX:
+            deformed_interior_plot.set_data(intX, intY)
+        frame_text.set_text(f'Frame: {frame}')
+        
+        # Update limits for current frame
+        x_min = min(min(x), min(xdef))
+        x_max = max(max(x), max(xdef))
+        y_min = min(min(y), min(ydef))
+        y_max = max(max(y), max(ydef))
+        
+        x_center = (x_min + x_max) / 2
+        y_center = (y_min + y_max) / 2
+        x_range = (x_max - x_min) 
+        y_range = (y_max - y_min)
+        
+        max_range = max(x_range, y_range)
+        ax.set_xlim([x_center - max_range/2, x_center + max_range/2])
+        ax.set_ylim([y_center - max_range/2, y_center + max_range/2])
+        
+        fig.canvas.draw_idle()
+    
+    slider.on_changed(update)
+    
+    # Maximize window
+    mng = plt.get_current_fig_manager()
+    try:
+        mng.window.state('zoomed')
+    except:
+        try:
+            mng.window.showMaximized()
+        except:
+            try:
+                mng.frame.Maximize(True)
+            except:
+                pass
+    
+    plt.show()
+    
 def showMesh2D(nodes,element,element_type = 'tri',mesh_type = 'coarse',show = True):
     x, y, interior_x, interior_y = listPlots(nodes, element, element_type, mesh_type)
     
@@ -283,6 +401,42 @@ def displacement(nodes,U,scale = 1):
     for i in range(len(nodes)):
         deformed_nodes[i] = [nodes[i][0]+U[2*i]*scale,nodes[i][1]+U[2*i+1]*scale]#adding the displacement to the original coordinates
     return deformed_nodes
+
+def get_deformed_nodes_list(nodes, U_reduced, constrained_dofs, scale=1):
+    """
+    Creates a list of deformed node positions from reduced displacement vectors.
+    
+    Parameters:
+        nodes (np.ndarray): Original node coordinates
+        U_reduced (np.ndarray): Reduced displacement vectors for each time step
+        constrained_dofs (list): List of constrained degrees of freedom
+        scale (float): Scale factor for displacements
+    
+    Returns:
+        list: List of deformed node positions for each time step
+        np.ndarray: Full displacement vectors for each time step
+    """
+    # Get number of time steps
+    n_steps = U_reduced.shape[1]
+    
+    # Reconstruct full displacement vectors
+    U = np.zeros((2*len(nodes), n_steps))
+    U[constrained_dofs,:] = 0
+    free_dofs = np.setdiff1d(np.arange(U.shape[0]), constrained_dofs)
+    U[free_dofs,:] = U_reduced
+    
+    # Create list of deformed nodes for each time step
+    deformed_nodes_list = []
+    for i in range(n_steps):
+        deformed_nodes = np.copy(nodes)
+        for j in range(len(nodes)):
+            deformed_nodes[j] = [
+                nodes[j][0] + U[2*j,i]*scale,
+                nodes[j][1] + U[2*j+1,i]*scale
+            ]
+        deformed_nodes_list.append(deformed_nodes)
+    
+    return deformed_nodes_list
 
 def shape_functions(element_type='tri', mesh_type='coarse'):
     """
@@ -446,9 +600,7 @@ def element_stiffness_matrix(nodes, elements, element_number, E, nu, t, element_
         # Use Gaussian integration
         gauss_points, weights = get_gauss_points(element_type)
         for point, weight in zip(gauss_points, weights):
-            B, J, detJ = compute_B_matrix_at_point(nodes, elements, element_number, 
-                                                 point[0], point[1], 
-                                                 element_type, mesh_type)
+            B, J, detJ = compute_B_matrix_at_point(nodes, elements, element_number, point[0], point[1], element_type, mesh_type)
             Ke += weight * B.T @ D @ B * abs(detJ) * t
     
     elif integration == 'symbolic':
@@ -752,25 +904,19 @@ def global_stiffness_matrix_linear(nodes,element,E,nu,t):
                 K[2*element[i][j]+1,2*element[i][k]+1] += Ke[2*j+1,2*k+1]
     return K
 
-def reduce_mass_matrix(M, constrained_dofs):
-    """
-    Reduce the mass matrix by removing rows and columns corresponding to constrained DOFs.
-
-    Parameters:
-        M (np.ndarray): Full mass matrix.
-        constrained_dofs (list): List of constrained degrees of freedom (DOFs).
-
-    Returns:
-        M_reduced (np.ndarray): Reduced mass matrix.
-        free_dofs (list): List of free degrees of freedom (DOFs).
-    """
+def reduce(M, constrained_dofs):
     # Determine free DOFs
     total_dofs = M.shape[0]
     free_dofs = [i for i in range(total_dofs) if i not in constrained_dofs]
 
-    # Reduce the mass matrix
-    M_reduced = M[np.ix_(free_dofs, free_dofs)]
-
+     # Check if input is vector or matrix
+    if M.ndim == 1:  # Vector
+        M_reduced = M[free_dofs]
+    elif M.ndim == 2:  # Matrix
+        M_reduced = M[np.ix_(free_dofs, free_dofs)]
+    else:
+        raise ValueError("Input must be either a vector (1D) or matrix (2D)")
+        
     return M_reduced
 
 def reconstruct_full_vector(reduced_vector, constrained_dofs, total_dofs):
@@ -1011,16 +1157,56 @@ def edgeForces(F, force, dir, l, N, M=0, element_type='tri', mesh_type='coarse')
     
     return F
 
-def globalForces(F,force,nodes,elements,t):
-    for i in elements:
-        nbPoints = elements[i]
-        points = [nodes[nbPoints[j]] for j in range(3)]
-        Fx += doubleNumericalIntegration(lambda x,y:force[0]*shapeFunction(nodes,elements,i)(x,y),10,points)
-        Fy += doubleNumericalIntegration(lambda x,y:force[1]*shapeFunction(nodes,elements,i)(x,y),10,points)
-        for j in nbPoints:    
-            F[2*nbPoints[0]] += Fx*t/3
-            F[2*nbPoints[0]+1] += Fy*t/3
-    return F
+def body_forces(nodes, elements, force_vector, body_force, t, element_type='tri', mesh_type='coarse'):
+    """
+    Compute body forces (like gravity) using shape function integration.
+    
+    Parameters:
+        nodes: Mesh nodes coordinates
+        elements: Element connectivity
+        force_vector: Global force vector to update
+        body_force: tuple (fx, fy) of body forces per unit mass
+        rho: Material density
+        t: Thickness
+        element_type: 'tri' or 'quad'
+        mesh_type: 'coarse' or 'fine'
+    """
+    # Get Gauss points and weights for volume integration
+    gauss_points, weights = get_gauss_points(element_type)
+    
+    # Get shape functions
+    N, xi, eta = shape_functions(element_type, mesh_type)
+    
+    # For each element
+    for elem_idx in elements:
+        element_nodes = elements[elem_idx]
+        n_nodes = len(element_nodes)
+        
+        # Element force vector
+        fe = np.zeros(2*n_nodes)
+        
+        # Integrate over element
+        for point, weight in zip(gauss_points, weights):
+            # Get shape functions at this point
+            N_eval = [float(n.subs({'xi': point[0], 'eta': point[1]})) for n in N]
+            
+            # Get Jacobian at this point
+            _, J, detJ = compute_B_matrix_at_point(nodes, elements, elem_idx, 
+                                                 point[0], point[1], 
+                                                 element_type, mesh_type)
+            
+            # For each node in element
+            for i in range(n_nodes):
+                # Add contribution to force vector
+                fe[2*i] += weight * N_eval[i] * body_force[0]  * t * abs(detJ)
+                fe[2*i + 1] += weight * N_eval[i] * body_force[1] * t * abs(detJ)
+        
+        # Assemble into global force vector
+        for i in range(n_nodes):
+            force_vector[2*element_nodes[i]] += fe[2*i]
+            force_vector[2*element_nodes[i] + 1] += fe[2*i + 1]
+            
+    return force_vector
 
 def globalEnergy(U,K):
     return 0.5*np.dot(U.T,np.dot(K,U))
