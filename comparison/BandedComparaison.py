@@ -4,7 +4,10 @@ import Polygones
 import matplotlib.pyplot as plt
 import numpy as np
 import time
-
+'''
+This script compares the performance of two methods for calculating the bandwidth of a global stiffness matrix and converting it to a banded format.
+It measures the time taken for each method and plots the results.
+'''
 # Define the material properties and the number of elements per side
 E = 200e9
 nu = 0.3
@@ -16,14 +19,14 @@ time_convert_to_banded_optimized = []
 time_calculate_bandwidth = []
 time_calculate_bandwidth_optimized = []
 
-for N in range(1, 51):
+for N in range(1, 21):
     nodes, elements = Polygones.mesh(10, 10, N)  # create the mesh
-    boundary_conditions = Polygones.boundry('left', [0, 0], N)  # create the boundary conditions, the left side is fixed
+    boundary_conditions = Polygones.boundary('left', [0, 0], N)  # create the boundary conditions, the left side is fixed
 
     F = np.zeros(2 * len(nodes), dtype=float)
     F = Polygones.edgeForces(F, [1e10, 0], 'right', 10, N)  # apply the force on the right side 1e10 in the x direction
     K = Polygones.global_stiffness_matrix(nodes, elements, E, nu, t)  # compute the global stiffness matrix
-    K, F = Polygones.apply_boundary_conditions(K, F, boundary_conditions)  # apply the boundary conditions
+    K, F,constrainDofs = Polygones.apply_boundary_conditions(K, F, boundary_conditions)  # apply the boundary conditions
 
     # Measure time for calculate_bandwidth
     start_time = time.time()

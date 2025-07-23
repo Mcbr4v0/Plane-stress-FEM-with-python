@@ -5,7 +5,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scipy.linalg
 import time
-
+'''
+This script compares the performance of two methods for solving a linear system of equations:
+1. Using `np.linalg.solve`
+2. Using `scipy.linalg.solve_banded` with a banded matrix representation.
+It measures the time taken for each method and plots the results.
+It also computes the relative error between the two methods.
+It works like the BandedComparaison.py script but uses the Polygones module to create the mesh and apply boundary conditions.
+It is used to verify the correctness of the Polygones module and to test the performance of the two methods.
+'''
 #Define the material properties and the number of elements per side
 E = 200e9
 nu = 0.3
@@ -25,15 +33,15 @@ def moy(U,Uprime):#function to compute the error between the two methods
 
 
 
-for N in range(1, 61):
+for N in range(1, 31):
     start_time = time.time()
     nodes, elements = Polygones.mesh(10, 10, N)  # create the mesh
-    boundary_conditions = Polygones.boundry('left', [0, 0],N)  # create the boundary conditions, the left side is fixed
+    boundary_conditions = Polygones.boundary('left', [0, 0],N)  # create the boundary conditions, the left side is fixed
 
     F = np.zeros(2 * len(nodes), dtype=float)
     F = Polygones.edgeForces(F, [1e10, 0], 'right',10,N)  # apply the force on the right side 1e10 in the x direction
     K = Polygones.global_stiffness_matrix(nodes, elements, E, nu,t)  # compute the global stiffness matrix
-    K, F = Polygones.apply_boundary_conditions(K, F, boundary_conditions)  # apply the boundary conditions
+    K, F,constrainedDofs = Polygones.apply_boundary_conditions(K, F, boundary_conditions)  # apply the boundary conditions
     end_time = time.time()
     time_compute_K.append(end_time -start_time)  # measure the time to compute the global stiffness
     

@@ -1,4 +1,4 @@
-import Polygones
+import Polygones #file containing most of the functions used in this script
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.linalg as scp
@@ -10,7 +10,7 @@ import time
 
 N = 20      # Number of elements in the x-direction
 G = 2       # Number of elements in the y-direction
-t = 0.01    # Thickness of the beam
+t = 0.1    # Thickness of the beam
 l = 2       # Length of the beam in the Y direction
 L = 20      # Length of the beam in the X direction
 
@@ -19,14 +19,14 @@ E = 210e9   # Young's modulus
 nu = 0.3    # Poisson's ratio
 pho = 7850
 
-P = 1e5     # Applied load
+P = 1e6     # Applied load
 I = t*l**3/12   # moment of inertia 
 
 # Setting for the simulation
-elt = 'quad' 
+elt = 'tri' 
 met = 'coarse'
-T = 300      # Total time of the simulation
-accelRatio  = 2 #1/accelRatio time step
+T = 10      # Total time of the simulation
+accelRatio  = 3 #1/accelRatio time step
 # IMPORTANT: Calculate adaptive time step based on system properties
 # We'll determine this after loading matrices
 
@@ -153,11 +153,11 @@ try:
         print("WARNING: Very small mass values detected. This can cause numerical instability.")
         
     # Let's try to compute a few eigenvalues directly
+    mode_number_max = 2  # Number of modes to compute
     try:
-        print("Computing eigenvalues...")
-        # Get the 6 smallest eigenvalues (most relevant for stability)
-        eigenvalues, eigenvectors = scp.eigh(K_reduced, M_reduced, eigvals=(0, 5))
-        print(f"Smallest eigenvalues: {eigenvalues}")
+        print(f"Computing first {mode_number_max} eigenvalues...")
+        eigenvalues, eigenvectors = scp.eigh(K_reduced, M_reduced, eigvals=(0, mode_number_max-1))
+        print(f"Computed eigenvalues: {eigenvalues}")
         
         # Compute natural frequencies
         frequencies = np.sqrt(eigenvalues) / (2 * np.pi)  # in Hz
@@ -165,8 +165,8 @@ try:
         print(f"Natural frequencies (Hz): {frequencies}")
         print(f"Natural periods (s): {periods}")
         
-        # Maximum eigenvalue for time step calculation
-        max_eigenvalue = np.max(eigenvalues)
+        # Use highest requested mode frequency for time step calculation
+        max_eigenvalue = eigenvalues[mode_number_max-1]
     except Exception as e:
         print(f"Error computing eigenvalues: {e}")
         print("Using power iteration method instead")
@@ -174,11 +174,11 @@ try:
     
     omega_max = np.sqrt(max_eigenvalue)
     dt_critical = 2.0 / omega_max
-
-    # Use a stricter safety factor to ensure stability
-    safety_factor = 1  # Much more conservative
+    print(f"Estimated critical time step: {dt_critical:.8f} seconds")
+    # Use a safety factor for the time step
+    safety_factor = 0.01  # Much more conservative
     dt = safety_factor * dt_critical
-    
+    dt = 0.001
     print(f"Critical time step: {dt_critical:.8f}")
     print(f"Using time step with safety factor: {dt:.8f}")
     
@@ -190,9 +190,9 @@ try:
     
     # Recalculate time discretization
     nbPoints = int(T / dt) + 1
-    if nbPoints > 1000000:  # Limit number of points for practicality
+    if nbPoints > 100000:  # Limit number of points for practicality
         print(f"Warning: Very large number of time steps ({nbPoints})")
-        nbPoints = 1000000
+        nbPoints = 100000
         dt = T / (nbPoints - 1)
         print(f"Adjusted time step to: {dt:.8f}")
     
@@ -216,8 +216,8 @@ print(f"Number of time steps: {nbPoints}")
 # Create the load vectors (ramp function)
 ForcesVectors = np.zeros((2*len(nodes), nbPoints), dtype=float)
 for i in range(T0+1):
-    t = times[i]
-    F = accelRatio*P*t/T
+    current_time = times[i]
+    F = accelRatio*P*current_time/T
     for j in range(len(nodes)):
         ForcesVectors[2*j, i] = 0
         ForcesVectors[2*j+1, i] = -F*L/len(nodes)
@@ -251,8 +251,9 @@ A_reduced = np.zeros((len(K_reduced), nbPoints), dtype=float)
 U_reduced[:,0] = np.zeros(len(K_reduced), dtype=float)
 V_reduced[:,0] = np.zeros(len(K_reduced), dtype=float)
 A_reduced[:,0] = np.linalg.solve(M_reduced, ForcesVectors_reduced[:,0] - K_reduced @ U_reduced[:,0])
-alpha = 0.05  # Mass proportional damping (increased)
-beta = 0.005  # Stiffness proportional damping (increased)
+
+alpha = 0.1 
+beta = 0.01
 C_reduced = alpha * M_reduced + beta * K_reduced
 # Consider using Newmark-beta method instead of Euler explicit
 # This is much more stable for structural dynamics problems
@@ -311,7 +312,7 @@ if use_newmark:
         U_reduced[:,i] = U_pred + beta_nm*dt**2*A_reduced[:,i]
         
         # Monitor for instability (using a more robust check)
-        if i > 10 and np.max(np.abs(U_reduced[:,i])) > 10 * np.mean(np.abs(U_reduced[:,i-10:i])):
+        if i > 10 and np.max(np.abs(U_reduced[:,i])) > 100 * np.mean(np.abs(U_reduced[:,i-10:i])):
             print(f"Warning: Possible instability detected at step {i}, time {times[i]}")
             print(f"Max displacement: {np.max(np.abs(U_reduced[:,i]))}")
             # Instead of breaking, let's try to recover
@@ -386,16 +387,31 @@ plt.title('Energy Evolution')
 plt.grid(True)
 plt.legend()
 
-# Plot maximum displacement over time (useful for checking stability)
+# Plot maximum displacement and velocity over time (useful for checking stability)
 max_displacements = np.max(np.abs(U_reduced), axis=0)
-plt.figure(figsize=(10, 6))
+max_velocitys = np.max(np.abs(V_reduced), axis=0)
+
+plt.figure(figsize=(10, 10))
+
+plt.subplot(2, 1, 1)
 valid_steps = min(len(times), len(max_displacements))
-plt.plot(times[:valid_steps], max_displacements[:valid_steps])
+plt.plot(times[:valid_steps], max_displacements[:valid_steps], label='Max Displacement')
 plt.xlabel('Time (s)')
 plt.ylabel('Maximum Displacement Magnitude')
 plt.title('Maximum Displacement vs Time')
 plt.grid(True)
+plt.legend()
 
+plt.subplot(2, 1, 2)
+valid_steps = min(len(times), len(max_velocitys))
+plt.plot(times[:valid_steps], max_velocitys[:valid_steps], color='orange', label='Max Velocity')
+plt.xlabel('Time (s)')
+plt.ylabel('Maximum Velocity Magnitude')
+plt.title('Maximum Velocity vs Time')
+plt.grid(True)
+plt.legend()
+
+plt.tight_layout()
 # Compute all the nodes positions for visualization
 try:
     deformed_nodes_list = Polygones.get_deformed_nodes_list(nodes, U_reduced, constrained_dofs,scale=5)
@@ -404,3 +420,14 @@ try:
 except Exception as e:
     print(f"Error in visualization: {e}")
     print("Try saving only selected frames instead of all time steps")
+
+#print max displacement and max velocity
+max_displacement = np.max(np.abs(U_reduced))
+max_velocity = np.max(np.abs(V_reduced))
+print(f"Maximum displacement magnitude: {max_displacement:.6f} m")
+print(f"Maximum velocity magnitude: {max_velocity:.6f} m/s")
+#print ratio between maximum of the stiffness and mass matrix
+K_max = np.max(np.abs(K_reduced))
+M_max = np.max(np.abs(M_reduced))
+ratio = K_max / M_max
+print(f"Ratio of max stiffness to max mass: {ratio:.4f}")
