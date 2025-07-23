@@ -534,24 +534,15 @@ def create_shape_functions(element_type='tri', mesh_type='coarse'):
 def get_gauss_points(element_type='tri'):
     """Get Gaussian quadrature points and weights for different element types"""
     if element_type == 'tri':
-        # Use 7-point Gauss quadrature for triangles
+        # Use 3-point Gauss quadrature for triangles
         points = [
-            (1/3, 1/3),                          # Point 1
-            (0.797426985353087, 0.101286507323456),  # Point 2
-            (0.101286507323456, 0.797426985353087),  # Point 3
-            (0.101286507323456, 0.101286507323456),  # Point 4
-            (0.470142064105115, 0.470142064105115),  # Point 5
-            (0.470142064105115, 0.059715871789770),  # Point 6
-            (0.059715871789770, 0.470142064105115)   # Point 7
+            (1/6, 1/6),  #point 1
+            (2/3, 1/6),  #point 2
+            (1/6, 2/3)   #point 3
         ]
+        w1 = 1/3  # Weights for the points
         weights = [
-            0.225,                     # Weight 1
-            0.125939180544827,        # Weight 2
-            0.125939180544827,        # Weight 3
-            0.125939180544827,        # Weight 4
-            0.132394152788506,        # Weight 5
-            0.132394152788506,        # Weight 6
-            0.132394152788506         # Weight 7
+            w1,w1,w1 # Corresponding weights for each point
         ]
     else:  # quad
         # 3x3 Gauss points for quadrilateral (more accurate)
@@ -852,7 +843,7 @@ def shapeFunctionCoeff(nodes, elements,nbElement):
     delta = (nodes[numpoints[0]][0]*(nodes[numpoints[1]][1]-nodes[numpoints[2]][1])
                 +nodes[numpoints[1]][0]*(nodes[numpoints[2]][1]-nodes[numpoints[0]][1])
                 +nodes[numpoints[2]][0]*(nodes[numpoints[0]][1]-nodes[numpoints[1]][1]))
-    for i in range(len(numpoints)):# calulation of each coefficient of the shape function
+    for i in range(len(numpoints)):# computation of each coefficient of the shape function
         a = nodes[numpoints[(i+1)%3]][0]*nodes[numpoints[(i+2)%3]][1]-nodes[numpoints[(i+2)%3]][0]*nodes[numpoints[(i+1)%3]][1]
         b = nodes[numpoints[(i+1)%3]][1]-nodes[numpoints[(i+2)%3]][1]
         c = nodes[numpoints[(i+2)%3]][0]-nodes[numpoints[(i+1)%3]][0]
@@ -885,7 +876,7 @@ def local_stiffness_matrix(nodes,element,nbElement,E,nu,t):
     points = element[nbElement]
     Volume = 0.5*(nodes[points[0]][0]*(nodes[points[1]][1]-nodes[points[2]][1])
                 +nodes[points[1]][0]*(nodes[points[2]][1]-nodes[points[0]][1])
-                +nodes[points[2]][0]*(nodes[points[0]][1]-nodes[points[1]][1]))*t#calcul of the triangle volume
+                +nodes[points[2]][0]*(nodes[points[0]][1]-nodes[points[1]][1]))*t#computation of the triangle volume
     B = strainDisplacement(nodes,element,nbElement)
     D = np.array([[1,nu,0],[nu,1,0],[0,0,(1-nu)/2]])*E/(1-nu**2)# to remove from the function because it depends on the type of material
     Ke = np.dot(B.T,np.dot(D,B))*Volume #since the B matrix is constant, the integral of B^TDB is equal to B^TDB*Volume
@@ -1233,7 +1224,7 @@ for i in range(3):
         else:
             Me[2*i,2*j] = 1
             Me[2*i+1,2*j+1] = 1
-            
+         
 def localMassMtrix(nodes,elements,nbElement,rho,t):
     points = elements[nbElement]
     Volume = 0.5*(nodes[points[0]][0]*(nodes[points[1]][1]-nodes[points[2]][1])
@@ -1371,6 +1362,8 @@ def global_mass_matrix(nodes, elements, rho, t, element_type='tri', mesh_type='c
                 M_global[2*element_nodes[i]+1, 2*element_nodes[j]+1] += Me[2*i+1, 2*j+1]
     
     return M_global
+
+
 
 def normalize_matrix(matrix):
     max_value = np.max(np.abs(matrix))

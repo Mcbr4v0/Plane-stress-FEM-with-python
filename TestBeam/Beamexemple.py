@@ -5,6 +5,18 @@ import scipy.linalg as sp
 import pandas as pd
 import scipy.sparse as sparse
 import scipy.sparse.linalg as spla
+
+'''
+this script performs a free vibration analysis of a rectangular plate using finite element methods.
+It generates a mesh, computes the global stiffness and mass matrices, applies boundary conditions,
+solves the eigenvalue problem, and visualizes the results.
+It was the first script to be written in the Polygones module.
+It is used to verify the correctness of the module and to test the eigenvalue problem solver.
+However due to rigid body modes, the eigenvalues are shifted at some point.
+The script also includes a comparison with analytical modes for validation.
+However due to the shifted eigenvalues, the comparison is not accurate.
+'''
+
 #constants
 E = 210e9
 nu = 0.3
@@ -46,7 +58,7 @@ boudary_conditions = [(4, [0, 0]), (364, [None, 0])]
 
 K_reduced, F_reduced, constrained_dofs = Polygones.apply_boundary_conditions(K, F, boudary_conditions)
 K_reconstruced = Polygones.reconstruct_full_matrix(K_reduced,constrained_dofs,2 * len(nodes))
-M_reduced = Polygones.reduce_mass_matrix(M,constrained_dofs)
+M_reduced = Polygones.reduce(M,constrained_dofs)
 
 eigenvalues = np.linalg.eigvalsh(K_reduced)
 is_positive_definite = np.all(eigenvalues > 0)
