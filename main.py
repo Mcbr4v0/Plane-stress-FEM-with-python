@@ -6,7 +6,16 @@ import pandas as pd
 from scipy.sparse.linalg import eigsh
 import sympy as sp
 import time
-
+'''
+This script try to resolve the dynamic response of a beam structure using finite element methods.
+It generates a mesh, but imports the stiffness and mass matrices from text files.
+Note: Depending on the script you are using, the mesh type and element type may vary.
+Copy and paste mesh parameters and element parameters from the script you are using.
+It uses 2 time integration methods: Euler explicit and Newmark-beta.
+Both methods have some failsafe mechanisms to avoid numerical instabilities.
+However it seams that in the end the results does not match the analytical results.
+Stil, some methods towards improving the stability of the simulation are intressting as well as the time integration methods.
+'''
 
 N = 20      # Number of elements in the x-direction
 G = 2       # Number of elements in the y-direction
