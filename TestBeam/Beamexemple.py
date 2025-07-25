@@ -60,6 +60,12 @@ K_reduced, F_reduced, constrained_dofs = Polygones.apply_boundary_conditions(K, 
 K_reconstruced = Polygones.reconstruct_full_matrix(K_reduced,constrained_dofs,2 * len(nodes))
 M_reduced = Polygones.reduce(M,constrained_dofs)
 
+U_reduced = sp.solve(K_reduced, F_reduced)
+U_full = Polygones.reconstruct_full_vector(U_reduced, constrained_dofs, 2 * len(nodes))
+deformed_nodes = Polygones.displacement(nodes, U_full)
+
+Polygones.showDeform2D(nodes,deformed_nodes, elements,  element_type='tri', mesh_type='coarse', show=True)
+
 eigenvalues = np.linalg.eigvalsh(K_reduced)
 is_positive_definite = np.all(eigenvalues > 0)
 print("Is global stiffness matrix positive definite?", is_positive_definite)
